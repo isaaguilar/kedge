@@ -9,48 +9,24 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	appsv1 "k8s.io/api/apps/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
-
-var mgr scheme.Builder
-
-func init() {
-	mgr.Register(&rbacv1.ClusterRoleBinding{})
-	mgr.Register(&rbacv1.ClusterRole{})
-	mgr.Register(&appsv1.StatefulSet{})
-
-	// appsv1.AddToScheme
-	// mgr.RegisterAll(appsv1.AddToScheme)
-}
-
-// func init() {
-// 	// Register the API group and version.
-// 	s :=
-// 	AddToScheme = s.AddToScheme
-
-// 	// AddToScheme(schema.GroupVersion{
-// 	// 		Group:   "externaldns.k8s.io",
-// 	// 		Version: "v1alpha1",
-// 	// })
-// }
 
 func main() {
 	b, err := ioutil.ReadFile("vcpretty.json")
 	if err != nil {
 		log.Fatal(err)
 	}
-	createOrUpdateResource(b, "default")
+	createOrUpdateResource(b, "chika-chika-boom")
 }
 
 func kubernetesConfig(kubeconfigPath string) *rest.Config {
@@ -98,15 +74,6 @@ func createOrUpdateResource(b []byte, namespace string) {
 		dynamicClient = namespaceableResourceClient
 	}
 
-	// oldObj, err := dynamicClient.Get(ctx, obj.GetName(), metav1.GetOptions{})
-	// if err != nil {
-	// 	if !kerrors.IsNotFound(err) {
-	// 		log.Printf("ERROR: failed fetching %s '%s/%s': %s", gvk.Kind, namespace, obj.GetName(), err)
-	// 		return
-	// 	}
-	// } else {
-	// 	oldObj.DeepCopyInto(&obj)
-	// }
 	obj.SetNamespace(namespace)
 	obj.SetResourceVersion("")
 	obj.SetUID("")
@@ -116,9 +83,9 @@ func createOrUpdateResource(b []byte, namespace string) {
 	if err != nil {
 		if kerrors.IsAlreadyExists(err) {
 			log.Printf("%s '%s/%s' already exists. Updating resource", gvk.Kind, namespace, obj.GetName())
-			_, err := dynamicClient.Update(ctx, &obj, metav1.UpdateOptions{})
+			_, err := dynamicClient.Patch(ctx, obj.GetName(), types.StrategicMergePatchType, b, metav1.PatchOptions{})
 			if err != nil {
-				log.Printf("ERROR: could not update %s '%s/%s': %s", gvk.Kind, namespace, obj.GetName(), err)
+				log.Printf("ERROR: could not patch %s '%s/%s': %s", gvk.Kind, namespace, obj.GetName(), err)
 				return
 			}
 			log.Printf("%s '%s/%s' has been updated", gvk.Kind, namespace, obj.GetName())
