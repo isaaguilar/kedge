@@ -172,22 +172,9 @@ func render(file os.FileInfo, templateFile string, data map[string]interface{}) 
 	}
 	defer os.Remove(tmp.Name()) // clean up
 
-	f, err := os.Stat(tmp.Name())
-	if err != nil {
-		return nil, err
-	}
-
 	err = tpl.Execute(tmp, data) // write to new template file
 	if err != nil {
 		return nil, err
-	}
-
-	hasTplSyntax, err := fileContains(tmp.Name(), "{{")
-	if err != nil {
-		return nil, err
-	}
-	if hasTplSyntax {
-		return render(f, tmp.Name(), data)
 	}
 
 	return ioutil.ReadFile(tmp.Name()) // read the new file (again?)
