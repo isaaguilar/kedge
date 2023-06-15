@@ -30,52 +30,51 @@ func Apply(config *rest.Config, inputFilename, namespace string, valueFilenames 
 
 	data, err := combineValues(valueFilenames, false)
 	if err != nil {
-		return err
+		return fmt.Errorf("error reading in values data: %s", err)
 	}
 	data["namespace"] = namespace
 
 	f, err := os.Stat(inputFilename)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not stat file: %s", err)
 	}
 
 	b, err := render(f, inputFilename, data)
 	if err != nil {
-		return nil
+		return fmt.Errorf("could not render template: %s", err)
 	}
 
-	createOrUpdateResource(b, namespace, config)
-	return nil
+	return createOrUpdateResource(b, namespace, config)
 }
 
-func createOrUpdateResource(b []byte, namespace string, config *rest.Config) {
+func createOrUpdateResource(b []byte, namespace string, config *rest.Config) error {
 	ctx := context.TODO()
 
 	obj := unstructured.Unstructured{}
 	err := yaml.Unmarshal(b, &obj)
 	if err != nil {
-		log.Println("ERROR: could not unmarshal resource:", err)
-		return
+		return fmt.Errorf("ERROR: could not unmarshal resource: %s", err)
 	}
 
 	if obj.IsList() {
-		obj.EachListItem(func(item runtime.Object) error {
+		err := obj.EachListItem(func(item runtime.Object) error {
 			b, err := json.Marshal(item)
 			if err != nil {
 				return err
 			}
-			createOrUpdateResource(b, namespace, config)
-			return nil
+			return createOrUpdateResource(b, namespace, config)
 		})
-		return
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 
 	gvk := obj.GetObjectKind().GroupVersionKind()
 	var dynamicClient dynamic.ResourceInterface
 	namespaceableResourceClient, isNamespaced, err := getDynamicClientOnKind(gvk.GroupVersion().String(), gvk.Kind, config)
 	if err != nil {
-		log.Println("ERROR: could not get a client to handle resource:", err)
-		return
+		return fmt.Errorf("ERROR: could not get a client to handle resource: %s", err)
 	}
 	if isNamespaced {
 		dynamicClient = namespaceableResourceClient.Namespace(namespace)
@@ -94,16 +93,16 @@ func createOrUpdateResource(b []byte, namespace string, config *rest.Config) {
 			log.Printf("%s '%s/%s' already exists. Updating resource", gvk.Kind, namespace, obj.GetName())
 			_, err := dynamicClient.Patch(ctx, obj.GetName(), types.StrategicMergePatchType, b, metav1.PatchOptions{})
 			if err != nil {
-				log.Printf("ERROR: could not patch %s '%s/%s': %s", gvk.Kind, namespace, obj.GetName(), err)
-				return
+				return fmt.Errorf("ERROR: could not patch %s '%s/%s': %s", gvk.Kind, namespace, obj.GetName(), err)
 			}
 			log.Printf("%s '%s/%s' has been updated", gvk.Kind, namespace, obj.GetName())
 		} else {
-			log.Printf("ERROR: could not create %s '%s/%s': %s", gvk.Kind, namespace, obj.GetName(), err)
+			return fmt.Errorf("ERROR: could not create %s '%s/%s': %s", gvk.Kind, namespace, obj.GetName(), err)
 		}
 	} else {
 		log.Printf("%s '%s/%s' has been created", gvk.Kind, namespace, obj.GetName())
 	}
+	return nil
 }
 
 // getDynamicClientOnUnstructured returns a dynamic client on an Unstructured type. This client can be further namespaced.
@@ -167,7 +166,7 @@ func render(file os.FileInfo, templateFile string, data map[string]interface{}) 
 		return nil, err
 	}
 
-	tmp, err := ioutil.TempFile("", "tmp_")
+	tmp, err := ioutil.TempFile(tmpdir(), "tmp_")
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +191,15 @@ func render(file os.FileInfo, templateFile string, data map[string]interface{}) 
 	}
 
 	return ioutil.ReadFile(tmp.Name()) // read the new file (again?)
+}
+
+func tmpdir() string {
+	t := os.TempDir()
+	_, err := os.Stat(t)
+	if err != nil {
+		return "."
+	}
+	return t
 }
 
 // combineValues merges multiple value files into a single data object. The
