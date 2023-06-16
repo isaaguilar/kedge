@@ -2,6 +2,7 @@ package kedge
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,9 +20,11 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8sjson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -93,7 +96,7 @@ func createOrUpdateResource(b []byte, namespace string, config *rest.Config) err
 		if kerrors.IsAlreadyExists(err) {
 			log.Printf("%s '%s/%s' already exists. Updating resource", gvk.Kind, namespace, obj.GetName())
 			// Get a clean mergable object
-			b, err := json.Marshal(obj)
+			b, err := makeNewPatchableData(&obj)
 			if err != nil {
 				return fmt.Errorf("could not marshal resource '%s/%s': %s", namespace, obj.GetName(), err)
 			}
@@ -156,6 +159,21 @@ func getAPIResourceForGVK(gvk schema.GroupVersionKind, config *rest.Config) (met
 		}
 	}
 	return res, nil
+}
+
+func makeNewPatchableData(obj *unstructured.Unstructured) ([]byte, error) {
+	gvks, _, err := scheme.Scheme.ObjectKinds(obj)
+	if err != nil {
+		return nil, err
+	}
+	if len(gvks) == 0 {
+		return nil, fmt.Errorf("No gvks identified")
+	}
+	obj.SetGroupVersionKind(gvks[0])
+
+	buf := bytes.NewBuffer([]byte{})
+	k8sjson.NewSerializer(k8sjson.DefaultMetaFactory, runtime.NewScheme(), runtime.NewScheme(), true).Encode(obj, buf)
+	return buf.Bytes(), nil
 }
 
 // render fills in a template with data from values. Values can contain
