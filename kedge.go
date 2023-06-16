@@ -83,6 +83,7 @@ func createOrUpdateResource(b []byte, namespace string, config *rest.Config) err
 	}
 
 	obj.SetNamespace(namespace)
+	obj.SetSelfLink("")
 	obj.SetResourceVersion("")
 	obj.SetUID("")
 	obj.SetOwnerReferences([]metav1.OwnerReference{}) // TODO fix to original tf
@@ -91,7 +92,12 @@ func createOrUpdateResource(b []byte, namespace string, config *rest.Config) err
 	if err != nil {
 		if kerrors.IsAlreadyExists(err) {
 			log.Printf("%s '%s/%s' already exists. Updating resource", gvk.Kind, namespace, obj.GetName())
-			_, err := dynamicClient.Patch(ctx, obj.GetName(), types.StrategicMergePatchType, b, metav1.PatchOptions{})
+			// Get a clean mergable object
+			b, err := json.Marshal(obj)
+			if err != nil {
+				return fmt.Errorf("could not marshal resource '%s/%s': %s", namespace, obj.GetName(), err)
+			}
+			_, err = dynamicClient.Patch(ctx, obj.GetName(), types.StrategicMergePatchType, b, metav1.PatchOptions{})
 			if err != nil {
 				return fmt.Errorf("ERROR: could not patch %s '%s/%s': %s", gvk.Kind, namespace, obj.GetName(), err)
 			}
