@@ -74,6 +74,11 @@ func createOrUpdateResource(b []byte, namespace string, config *rest.Config) err
 	}
 
 	gvk := obj.GetObjectKind().GroupVersionKind()
+	if gvk.Kind == "List" {
+		// Check if gvk kind is a list, these should be ignored after checking if there are list items with 0 items
+		return nil
+	}
+
 	var dynamicClient dynamic.ResourceInterface
 	namespaceableResourceClient, isNamespaced, err := getDynamicClientOnKind(gvk.GroupVersion().String(), gvk.Kind, config)
 	if err != nil {
