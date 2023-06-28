@@ -85,12 +85,16 @@ func createOrUpdateResource(b []byte, namespace string, config *rest.Config) err
 		return fmt.Errorf("ERROR: could not get a client to handle resource: %s", err)
 	}
 	if isNamespaced {
+		if obj.GetNamespace() != "" {
+			namespace = obj.GetNamespace()
+		} else {
+			obj.SetNamespace(namespace)
+		}
 		dynamicClient = namespaceableResourceClient.Namespace(namespace)
 	} else {
 		dynamicClient = namespaceableResourceClient
 	}
 
-	obj.SetNamespace(namespace)
 	obj.SetSelfLink("")
 	obj.SetResourceVersion("")
 	obj.SetUID("")
